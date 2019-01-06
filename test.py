@@ -16,22 +16,28 @@ from multiprocessing import Process, Pool
 import pandas as pd
 import random as r
 import scipy as sc
-
+import torch.nn as nn
 from data_set import ImageSet
+from torchvision import models
 from torch.utils.data.dataloader import DataLoader
 import torchvision as tv
+from torchvision import transforms
 from network import CSRNet
+
+
 
 
 def validation(model,test_set):
     mse=0
     mae=0
     for i in range(0,182):
-        img,path=test_set.__getitem__(i)
-
-        index=path.split('_')[-1].split('.')[0]
-        img=img.view((-1,img.shape[0],img.shape[1],img.shape[2]))
-        pet=model(img).data.cpu().numpy()
+        img=test_set.__getitem__(i)
+        '''
+        img = Image.open(os.path.join(root_path,'test_data','images','IMG_{0}.jpg'.format(i+1))).convert('RGB')
+        img=transform(img)
+        img = img.cuda()
+'''
+        pet=model(img.unsqueeze(0)).data.cpu().numpy()
         '''
         print(pet.shape)
         plt.subplot(1,2,1)
@@ -43,7 +49,7 @@ def validation(model,test_set):
         '''
         pet = np.sum(pet)
 
-        ground_truth = pd.read_csv(os.path.join('origin','part_A','test_data', 'ground_truth/GT_IMG_{0}.csv'.format(index)), header=None)
+        ground_truth = pd.read_csv(os.path.join('origin','part_A','test_data', 'ground_truth/GT_IMG_{0}.csv'.format(i+1)), header=None)
         ground_truth = ground_truth.values.shape[0]
 
         gt=ground_truth
@@ -54,14 +60,23 @@ def validation(model,test_set):
     mse=np.sqrt(mse/182)
     return mae,mse
 
-
 root_path=os.path.join('origin','part_A')
 
 vgg=tv.models.vgg16(pretrained=True)
 model=CSRNet(vgg)
+'''
+state=torch.load(os.path.join('PartAmodel_best.pth.tar'))['state_dict']
+
+dic={}
+for (k1,v1),(k2,v2) in zip(model.state_dict().items(),state.items()):
+    print(k1,k2)
+    dic[k1]=v2
+'''
+#model.load_state_dict(dic)
+
+model.load_state_dict(torch.load(os.path.join('model_best_ok.torch_model'))['net'])
 model.cuda()
-model.load_state_dict(torch.load(os.path.join('save','model_505_.torch_model')))
-test_set=train_set=ImageSet(os.path.join(root_path,'test_data'), has_gt=False)
+test_set=train_set=ImageSet(os.path.join(root_path,'test_data'),1,182, has_gt=False)
 
 mae,mse=validation(model,test_set)
 

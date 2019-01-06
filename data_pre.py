@@ -63,14 +63,15 @@ def floor_div2(v,k):
     return v
 
 
-def cut_patch(image,gt):
+def cut_patch(image,den):
     #gt[i][0]->x gt[i][1]->y
     # 9 img
     (h,w,c) = image.shape
     nw = floor_div2(w,1)
     nh = floor_div2(h,1)
+    print(den.shape)
     imgs=[]
-    points=[]
+    dens=[]
     for i in range(9):
         if i<4:
             x=i//2*nw
@@ -79,17 +80,8 @@ def cut_patch(image,gt):
             x=r.randint(0,nw-1)
             y=r.randint(0,nh-1)
         imgs.append(image[y:y+nh,x:x+nw,1])
-        point_patch=[]
-        for point in gt:
-            yy = int(point[1])
-            xx = int(point[0])
-            if y<=yy and yy<y+nh and x<=xx and xx<x+nw:
-                yy-=y
-                xx-=x
-                point_patch.append([yy,xx])
-        point_patch=np.array(point_patch)
-        points.append(point_patch)
-    return imgs,points
+        dens.append(den[y:y+nh,x:x+nw])
+    return imgs,dens
 
 def generate_density(img,pts):
     [h, w] = [img.shape[0], img.shape[1]]
@@ -101,7 +93,7 @@ def generate_density(img,pts):
     p_size = len(pts)
     for j, pt in enumerate(pts):
         sub_den = np.zeros((h, w))
-        sub_den[pt[0], pt[1]] = 1
+        sub_den[math.floor(pt[1]), math.floor(pt[0])] = 1
         if p_size <= 1:
             sigma = np.average(np.array(pts.shape))
         else:
@@ -128,23 +120,39 @@ def solve(pName,dName,index):
     image = cv2.imread(os.path.join(path,'images/IMG_{0}.jpg'.format(index)))
     ground_truth=pd.read_csv(os.path.join(path,'ground_truth/GT_IMG_{0}.csv'.format(index)),header=None)
     ground_truth=ground_truth.values
-
-    [imgs,pts]=cut_patch(image,ground_truth)
+    density = generate_density(image, ground_truth)
+    #[imgs,dens]=cut_patch(image,density)
     os.makedirs(os.path.join(t_path, 'images/'), exist_ok=True)
     os.makedirs(os.path.join(t_path, 'ground_truth/'), exist_ok=True)
-    for i in range(9):
-        density=generate_density(imgs[i],pts[i])
-        [h, w] = [imgs[i].shape[0], imgs[i].shape[1]]
-        # imgs[i]=cv2.resize(imgs[i],(w*8,h*8)) #do it when training
-        density = cv2.resize(density, (floor_div2(density.shape[1], 3), floor_div2(density.shape[0], 3)),interpolation=cv2.INTER_CUBIC) * 64
-
-        cv2.imwrite(os.path.join(t_path,'images/IMG_{0}_patch{1}.JPG'.format(index,i)),imgs[i])
-        np.save(os.path.join(t_path,'ground_truth/IMG_{0}_patch{1}.npy'.format(index,i)), density)
-
-        imgs[i] = imgs[i][:, ::-1]
-        density=density[:,::-1]
-        cv2.imwrite(os.path.join(t_path, 'images/IMG_{0}_patch{1}_m.JPG'.format(index, i)), imgs[i])
-        np.save(os.path.join(t_path, 'ground_truth/IMG_{0}_patch{1}_m.npy'.format(index, i)), density)
+    '''
+    if False:
+        for i in range(9):
+            [h, w] = [imgs[i].shape[0], imgs[i].shape[1]]
+            # imgs[i]=cv2.resize(imgs[i],(w*8,h*8)) #do it when training
+            crowd_cnt=np.sum(dens[i])
+            dens[i] = cv2.resize(dens[i], (floor_div2(dens[i].shape[1], 3), floor_div2(dens[i].shape[0], 3)),interpolation=cv2.INTER_CUBIC)
+            if crowd_cnt!=0 and np.sum(dens[i])!=0:
+                dens[i]*=crowd_cnt/np.sum(dens[i])
+            cv2.imwrite(os.path.join(t_path,'images/IMG_{0}_patch{1}.JPG'.format(index,i)),imgs[i])
+            np.save(os.path.join(t_path,'ground_truth/IMG_{0}_patch{1}.npy'.format(index,i)), dens[i])
+    
+            imgs[i] = imgs[i][:, ::-1]
+            dens[i]=dens[i][:,::-1]
+    
+            cv2.imwrite(os.path.join(t_path, 'images/IMG_{0}_patch{1}_m.JPG'.format(index, i)), imgs[i])
+            np.save(os.path.join(t_path, 'ground_truth/IMG_{0}_patch{1}_m.npy'.format(index, i)), dens[i])
+    '''
+    crowd_cnt=len(ground_truth)
+    density = cv2.resize(density, (floor_div2(density.shape[1], 3), floor_div2(density.shape[0], 3)),
+                         interpolation=cv2.INTER_CUBIC)
+    if crowd_cnt != 0 and np.sum(density):
+        density *= crowd_cnt / np.sum(density)
+    cv2.imwrite(os.path.join(t_path, 'images/IMG_{0}.JPG'.format(index)), image)
+    np.save(os.path.join(t_path, 'ground_truth/IMG_{0}.npy'.format(index)),density)
+    image=image[:,::-1]
+    density=density[:,::-1]
+    cv2.imwrite(os.path.join(t_path, 'images/IMG_{0}_m.JPG'.format(index)), image)
+    np.save(os.path.join(t_path, 'ground_truth/IMG_{0}_m.npy'.format(index)),density)
     print('ok',os.path.join(path,'images/IMG_{0}.JPG'.format(index)))
     '''
     with open(path + 'ground-truth/GT_IMG_' + str(index) + '.csv') as f:
@@ -216,19 +224,18 @@ def create_validation():
 if __name__ =='__main__':#进程不能共用内存
 
     dirName = [['part_A', 'part_B'], ['train_data', 'test_data']]
-    #solve('part_A', 'train_data', 204)
-
+   # solve('part_A', 'train_data', 28)
+   # input()
     imageNumber = [300, 182, 400, 316]
     dirIndex = 0
-    process = Pool(6)
-    for dName in dirName[1]:
-        for i in range(1,imageNumber[dirIndex]+1):
-                #print(i)
-            process.apply_async(func=solve, args=(dirName[0][0], dName, i))
+    process = Pool(5)
+    for i in range(1,imageNumber[0]+1):
+               #print(i)
+        process.apply_async(func=solve, args=(dirName[0][0], dirName[1][0], i))
                 #solve(pName,dName,i)
-        dirIndex += 1
+    dirIndex += 1
     process.close()
     process.join()
 
-    create_validation()
+    #create_validation()
     print("Finish")
